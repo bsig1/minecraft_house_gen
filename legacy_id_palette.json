@@ -1,0 +1,192 @@
+{
+  "fallback_unknown": {
+    "Name": "minecraft:stone_bricks"
+  },
+  "signed_ids": {
+    "-122": {
+      "Name": "minecraft:spruce_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "-121": {
+      "Name": "minecraft:birch_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "-101": {
+      "Name": "minecraft:quartz_block"
+    },
+    "-100": {
+      "Name": "minecraft:quartz_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "-97": {
+      "Name": "minecraft:white_terracotta"
+    },
+    "-96": {
+      "Name": "minecraft:white_stained_glass_pane",
+      "Properties": {
+        "east": "false",
+        "north": "false",
+        "south": "false",
+        "waterlogged": "false",
+        "west": "false"
+      }
+    },
+    "-94": {
+      "Name": "minecraft:acacia_log",
+      "Properties": {
+        "axis": "y"
+      }
+    },
+    "-92": {
+      "Name": "minecraft:acacia_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "-85": {
+      "Name": "minecraft:white_carpet"
+    },
+    "-5": {
+      "Name": "minecraft:white_concrete"
+    },
+    "1": {
+      "Name": "minecraft:stone"
+    },
+    "2": {
+      "Name": "minecraft:grass_block",
+      "Properties": {
+        "snowy": "false"
+      }
+    },
+    "4": {
+      "Name": "minecraft:cobblestone"
+    },
+    "5": {
+      "Name": "minecraft:oak_planks"
+    },
+    "12": {
+      "Name": "minecraft:sand"
+    },
+    "17": {
+      "Name": "minecraft:oak_log",
+      "Properties": {
+        "axis": "y"
+      }
+    },
+    "20": {
+      "Name": "minecraft:glass"
+    },
+    "22": {
+      "Name": "minecraft:lapis_block"
+    },
+    "24": {
+      "Name": "minecraft:sandstone"
+    },
+    "35": {
+      "Name": "minecraft:white_wool"
+    },
+    "42": {
+      "Name": "minecraft:iron_block"
+    },
+    "43": {
+      "Name": "minecraft:smooth_stone"
+    },
+    "44": {
+      "Name": "minecraft:smooth_stone_slab",
+      "Properties": {
+        "type": "bottom",
+        "waterlogged": "false"
+      }
+    },
+    "45": {
+      "Name": "minecraft:bricks"
+    },
+    "48": {
+      "Name": "minecraft:mossy_cobblestone"
+    },
+    "50": {
+      "Name": "minecraft:torch"
+    },
+    "53": {
+      "Name": "minecraft:oak_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "67": {
+      "Name": "minecraft:cobblestone_stairs",
+      "Properties": {
+        "facing": "north",
+        "half": "bottom",
+        "shape": "straight",
+        "waterlogged": "false"
+      }
+    },
+    "80": {
+      "Name": "minecraft:snow_block"
+    },
+    "85": {
+      "Name": "minecraft:oak_fence",
+      "Properties": {
+        "east": "false",
+        "north": "false",
+        "south": "false",
+        "waterlogged": "false",
+        "west": "false"
+      }
+    },
+    "89": {
+      "Name": "minecraft:glowstone"
+    },
+    "95": {
+      "Name": "minecraft:white_stained_glass"
+    },
+    "97": {
+      "Name": "minecraft:infested_stone_bricks"
+    },
+    "98": {
+      "Name": "minecraft:stone_bricks"
+    },
+    "102": {
+      "Name": "minecraft:glass_pane",
+      "Properties": {
+        "east": "false",
+        "north": "false",
+        "south": "false",
+        "waterlogged": "false",
+        "west": "false"
+      }
+    },
+    "112": {
+      "Name": "minecraft:nether_bricks"
+    },
+    "126": {
+      "Name": "minecraft:oak_slab",
+      "Properties": {
+        "type": "bottom",
+        "waterlogged": "false"
+      }
+    }
+  }
+}
