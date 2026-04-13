@@ -2,6 +2,8 @@
 
 Blocks are represented as vectors in a latent space where similar blocks are close together in latent space by cosine distance.
 
+Data from https://www.kaggle.com/datasets/shauncomino/minecraft-builds-dataset/data
+
 ---
 
 ## Noising
