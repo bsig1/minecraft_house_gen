@@ -122,6 +122,4 @@ Its role is to ensure that local motifs occur in coherent spatial configurations
 - windows should be embedded within walls rather than floating in space
 - the overall massing should resemble a plausible building
 
-This term ensures that local motifs are assembled into a meaningful whole.
-
 ---
