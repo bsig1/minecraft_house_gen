@@ -1,125 +1,135 @@
-# Architecture V2
+# Minecraft Build VAE
 
-Blocks are represented as vectors in a latent space where similar blocks are close together in latent space by cosine distance.
+This project trains a 3D variational autoencoder on the voxel builds in `mc_builds/`.
 
-Data from https://www.kaggle.com/datasets/shauncomino/minecraft-builds-dataset/data
+The dataset in this workspace already uses:
 
----
+- a shared palette at `mc_builds/global_palette.json`
+- voxel tensors stored as `32 x 32 x 32` integer block IDs
+- `YZX` axis order
+- 12,379 build samples in `mc_builds/files/*.npz`
 
-## Noising
+The VAE treats each voxel as a categorical block ID, learns a latent embedding for whole builds, and can:
 
-The noising process follows the standard diffusion framework. Over a fixed schedule, Gaussian noise is added to each block’s latent representation, gradually destroying semantic and structural information until the latent tensor is approximately pure noise.
+- reconstruct an existing build
+- sample a new build from the latent prior
+- write predictions back out as `.npz` files that match the dataset format
+- export Java Edition structure files as compressed `.nbt`
 
-A consequence of this design is that, once noise has been added, a latent vector generally no longer corresponds exactly to any valid block embedding in the vocabulary. This is not a problem during diffusion itself, since intermediate states are allowed to exist in continuous latent space rather than correspond to discrete blocks.
+## Install
 
----
+Create a virtual environment, then install the package:
 
-## Denoising
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
 
-The denoising process learns to reverse the forward noising procedure by gradually transforming a noisy latent tensor back into a coherent structure.
+If you want GPU training, install a CUDA-enabled PyTorch build that matches your system before running `pip install -e .`.
 
-At each timestep, the model takes as input:
-- a noisy latent tensor
-- a timestep embedding
+## Train
 
-and predicts the noise that was added to the clean latent representation.
+```powershell
+python -m mcvae.train `
+  --data-dir mc_builds/files `
+  --palette-json mc_builds/global_palette.json `
+  --output-dir runs\baseline `
+  --epochs 40 `
+  --batch-size 2 `
+  --latent-dim 256 `
+  --beta 0.01 `
+  --air-loss-weight 0.15
+```
 
-This denoising model is trained primarily with the standard diffusion objective: given a real build, partially noise it to a randomly chosen timestep, and train the model to predict the added noise. 
+Notes:
 
----
+- `air` is the dominant class, so the default loss downweights it slightly.
+- Start with `--batch-size 1` or `2` if you hit GPU memory limits.
+- Use `--limit 512` for a fast smoke test before full training.
 
-### Final Decoding
+Training writes:
 
-After the final denoising step produces a clean latent tensor, each voxel is decoded into a block.
+- `runs/<name>/checkpoints/best.pt`
+- `runs/<name>/checkpoints/last.pt`
+- `runs/<name>/metrics.jsonl`
+- `runs/<name>/config.json`
 
-For each latent vector:
-- compute distance to all block embeddings
-- convert distances to probabilities via softmax
-- choose a block via argmax or sampling
-  - argmax for stable, consistent builds
-  - sampling for more diverse, natural variation
+## Reconstruct Existing Builds
 
----
+```powershell
+python -m mcvae.generate reconstruct `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --input mc_builds/files\build_1.npz `
+  --output-dir outputs\reconstructions
+```
 
-### Model Architecture
+## Sample New Builds
 
-The denoising model is a 3D convolutional neural network operating over the latent voxel grid.
+```powershell
+python -m mcvae.generate sample `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --count 16 `
+  --output-dir outputs\samples
+```
 
-Key properties:
-- captures spatial structure through convolution
-- uses residual blocks for stable training
-- incorporates timestep embeddings so the model knows how much noise is present
+## Export As Structure Files
 
-The architecture is designed to capture multiple scales:
-- early layers focus on local patterns
-- deeper layers capture larger spatial relationships
+To export vanilla Java structure files instead of NPZ:
 
----
+```powershell
+python -m mcvae.generate sample `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --count 4 `
+  --output-dir outputs\structures `
+  --format structure
+```
 
-### Loss Guided Training
+You can also write both formats at once:
 
-The standard diffusion loss teaches the model to reconstruct the original latent representation from a noisy input. However, reconstruction accuracy alone does not guarantee that the reconstructed build is architecturally plausible.
+```powershell
+python -m mcvae.generate reconstruct `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --input mc_builds/files\build_1.npz `
+  --output-dir outputs\reconstructions `
+  --format both
+```
 
-To address this, the model’s predicted clean latent representation is decoded into block space, and the three structural losses are applied to that reconstruction:
-- palette loss checks whether the material distribution is realistic
-- local structure loss checks whether small motifs resemble real building components
-- global structure loss checks whether those motifs are assembled into a coherent whole
+If you want a `DataVersion` tag in the structure file, add:
 
-These losses act as structural regularizers. They do not replace the denoising objective. Instead, they guide the model toward reconstructions that are not only close to the original data, but also explicitly reasonable as houses.
+```powershell
+--structure-data-version <your_version_number>
+```
 
-The total training objective is therefore a weighted combination of:
-- denoising accuracy
-- palette realism
-- local motif realism
-- global structural realism
+The exporter assumes Java structure format and converts the dataset's `YZX` tensors into structure-block `[x, y, z]` positions automatically.
 
-Conceptually, the training step looks like this:
-1. take a real build
-2. embed it into latent space
-3. add Gaussian noise at a randomly chosen timestep
-4. predict the added noise with the denoising network
-5. reconstruct the model’s estimate of the clean latent vector
-6. decode that estimate into block space
-7. apply palette, local, and global losses to the reconstruction
-8. backpropagate all losses together
+## Avoid Empty Samples
 
-In this way, the structural losses influence training by pushing the model to predict noise in a way that leads to better reconstructions.
+Generated samples can collapse to mostly air because Minecraft builds are sparse. The generator rejects trivial outputs by default with `--min-non-air 256`. You can make this stricter, or bias decoding away from air:
 
+```powershell
+python -m mcvae.generate sample `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --count 12 `
+  --output-dir outputs\non_empty_samples `
+  --format structure `
+  --device cuda `
+  --min-non-air 800 `
+  --air-logit-penalty 1.5
+```
 
----
+If samples become noisy, lower `--air-logit-penalty`. If too many are rejected, lower `--min-non-air`.
 
-## Loss Function
+## What Comes Out
 
-The loss function is composed of three components.
+Each generated file includes:
 
-### 1. Reasonable Block Palette
+- `blocks.npy`
+- `shape.npy`
+- `original_shape.npy`
+- `axis_order.npy`
+- `source_format.npy`
+- `dataset_path.npy`
 
-Valid houses are materially multimodal, so the dataset should not be modeled as having one average palette. Instead, builds are grouped into several palette families, such as wood cabins, sandstone structures, or quartz mansions.
-
-Each build is embedded as a weighted combination of its block embeddings and assigned to a palette cluster. For a generated build, its palette embedding is compared to the nearest cluster centroid using cosine distance, scaled by that cluster’s empirical spread.
-
-If the generated build lies several cluster-standard-deviations away from every centroid, then its material distribution is treated as implausible.
-
----
-
-### 2. Recognizable Local Structures
-
-A lightly pooled CNN is used to detect common local building motifs such as windows, doors, roof edges, corners, pillars, and wall patterns.
-
-This part of the loss penalizes local arrangements of blocks that do not resemble motifs commonly found in the training data. Because convolution is translationally equivariant and pooling adds some translational tolerance, this detector can recognize a window-like pattern regardless of its precise location.
-
-However, local plausibility alone is not sufficient. A valid motif in an invalid place, such as a floating window detached from the rest of the structure, may still score well locally.
-
----
-
-### 3. Global Structure
-
-A more strongly pooled CNN evaluates the arrangement of large-scale components across the entire build.
-
-Its role is to ensure that local motifs occur in coherent spatial configurations. For example:
-- roofs should appear above walls
-- doors should connect to reachable entrances
-- windows should be embedded within walls rather than floating in space
-- the overall massing should resemble a plausible building
-
----
+That makes the output easy to inspect with the same tools you already use for the source dataset.

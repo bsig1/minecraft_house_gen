@@ -1,0 +1,96 @@
+Metadata-Version: 2.4
+Name: mc-build-vae
+Version: 0.1.0
+Summary: Train a variational autoencoder on Minecraft voxel builds stored as NPZ tensors.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.26
+Requires-Dist: torch>=2.2
+
+# Minecraft Build VAE
+
+This project trains a 3D variational autoencoder on the voxel builds in `mc_builds/`.
+
+The dataset in this workspace already uses:
+
+- a shared palette at `mc_builds/global_palette.json`
+- voxel tensors stored as `32 x 32 x 32` integer block IDs
+- `YZX` axis order
+- 12,379 build samples in `mc_builds/files/*.npz`
+
+The VAE treats each voxel as a categorical block ID, learns a latent embedding for whole builds, and can:
+
+- reconstruct an existing build
+- sample a new build from the latent prior
+- write predictions back out as `.npz` files that match the dataset format
+
+## Install
+
+Create a virtual environment, then install the package:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+If you want GPU training, install a CUDA-enabled PyTorch build that matches your system before running `pip install -e .`.
+
+## Train
+
+```powershell
+python -m mcvae.train `
+  --data-dir mc_builds/files `
+  --palette-json mc_builds/global_palette.json `
+  --output-dir runs\baseline `
+  --epochs 40 `
+  --batch-size 2 `
+  --latent-dim 256 `
+  --beta 0.01 `
+  --air-loss-weight 0.15
+```
+
+Notes:
+
+- `air` is the dominant class, so the default loss downweights it slightly.
+- Start with `--batch-size 1` or `2` if you hit GPU memory limits.
+- Use `--limit 512` for a fast smoke test before full training.
+
+Training writes:
+
+- `runs/<name>/checkpoints/best.pt`
+- `runs/<name>/checkpoints/last.pt`
+- `runs/<name>/metrics.jsonl`
+- `runs/<name>/config.json`
+
+## Reconstruct Existing Builds
+
+```powershell
+python -m mcvae.generate reconstruct `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --input mc_builds/files\build_1.npz `
+  --output-dir outputs\reconstructions
+```
+
+## Sample New Builds
+
+```powershell
+python -m mcvae.generate sample `
+  --checkpoint runs\baseline\checkpoints\best.pt `
+  --count 16 `
+  --output-dir outputs\samples
+```
+
+## What Comes Out
+
+Each generated file includes:
+
+- `blocks.npy`
+- `shape.npy`
+- `original_shape.npy`
+- `axis_order.npy`
+- `source_format.npy`
+- `dataset_path.npy`
+
+That makes the output easy to inspect with the same tools you already use for the source dataset.
