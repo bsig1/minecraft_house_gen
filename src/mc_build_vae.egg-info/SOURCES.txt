@@ -3,11 +3,15 @@ pyproject.toml
 src/mc_build_vae.egg-info/PKG-INFO
 src/mc_build_vae.egg-info/SOURCES.txt
 src/mc_build_vae.egg-info/dependency_links.txt
+src/mc_build_vae.egg-info/entry_points.txt
 src/mc_build_vae.egg-info/requires.txt
 src/mc_build_vae.egg-info/top_level.txt
 src/mcvae/__init__.py
+src/mcvae/cli.py
 src/mcvae/data.py
+src/mcvae/diffusion.py
 src/mcvae/generate.py
 src/mcvae/io.py
 src/mcvae/model.py
 src/mcvae/train.py
+src/mcvae/train_diffusion.py

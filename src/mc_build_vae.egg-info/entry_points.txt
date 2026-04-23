@@ -1,0 +1,2 @@
+[console_scripts]
+mcvae-cli = mcvae.cli:main

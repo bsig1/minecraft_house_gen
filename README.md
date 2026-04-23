@@ -13,6 +13,7 @@ The VAE treats each voxel as a categorical block ID, learns a latent embedding f
 
 - reconstruct an existing build
 - sample a new build from the latent prior
+- support a learned latent diffusion prior for higher-quality sampling
 - write predictions back out as `.npz` files that match the dataset format
 - export Java Edition structure files as compressed `.nbt`
 
@@ -28,6 +29,20 @@ python -m pip install -e .
 ```
 
 If you want GPU training, install a CUDA-enabled PyTorch build that matches your system before running `pip install -e .`.
+
+## Interactive CLI
+
+Use the interactive launcher to pick a workflow by number, review parameters, optionally edit them, and confirm before execution:
+
+```powershell
+python -m mcvae.cli
+```
+
+If installed as a script entrypoint, you can also run:
+
+```powershell
+mcvae-cli
+```
 
 ## Train
 
@@ -56,6 +71,34 @@ Training writes:
 - `runs/<name>/metrics.jsonl`
 - `runs/<name>/config.json`
 
+## Train Latent Diffusion (On Top Of VAE)
+
+After VAE training, train a diffusion model in latent space:
+
+```powershell
+python -m mcvae.train_diffusion `
+  --data-dir mc_builds/files `
+  --palette-json mc_builds/global_palette.json `
+  --vae-checkpoint runs\baseline\checkpoints\best.pt `
+  --output-dir runs\diffusion `
+  --epochs 60 `
+  --batch-size 16 `
+  --diffusion-steps 1000
+```
+
+Notes:
+
+- This reuses the pretrained VAE encoder to produce latent targets.
+- Default training uses deterministic latent means (`mu`).
+- Add `--use-posterior-sample` to train against sampled `z ~ q(z|x)` instead.
+
+Training writes:
+
+- `runs/diffusion/checkpoints/best.pt`
+- `runs/diffusion/checkpoints/last.pt`
+- `runs/diffusion/metrics.jsonl`
+- `runs/diffusion/config.json`
+
 ## Reconstruct Existing Builds
 
 ```powershell
@@ -73,6 +116,25 @@ python -m mcvae.generate sample `
   --count 16 `
   --output-dir outputs\samples
 ```
+
+## Sample With Latent Diffusion
+
+Use the diffusion prior plus the VAE decoder:
+
+```powershell
+python -m mcvae.generate sample-diffusion `
+  --vae-checkpoint runs\baseline\checkpoints\best.pt `
+  --diffusion-checkpoint runs\diffusion\checkpoints\best.pt `
+  --count 16 `
+  --output-dir outputs\diffusion_samples
+```
+
+All sample quality flags also work here, including:
+
+- `--min-non-air`
+- `--air-logit-penalty`
+- `--sample-voxels`
+- `--temperature`
 
 ## Export As Structure Files
 

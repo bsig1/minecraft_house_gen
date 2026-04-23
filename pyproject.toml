@@ -13,6 +13,9 @@ dependencies = [
   "torch>=2.2",
 ]
 
+[project.scripts]
+mcvae-cli = "mcvae.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

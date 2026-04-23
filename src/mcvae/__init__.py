@@ -2,6 +2,7 @@
 
 __all__ = [
     "data",
+    "diffusion",
     "io",
     "model",
 ]

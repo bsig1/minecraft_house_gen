@@ -1,0 +1,131 @@
+---
+# Generative AI Minecraft Houses
+---
+
+## Problem
+For this project I wanted to try to generate 3D structures, and I thought a domain for
+this would be Minecraft. One of the most popular games of all time. Minecraft is a sandbox
+that allows for infinite 3-dimensional creation, and notably for my purposes a well-developed
+pipeline for importing and exporting structures, with a community full of people who have
+posted their creations online.
+
+The goal is to use generative AI to take some dataset of Minecraft creations, and generate
+new creations that look reasonably good. Like something a person might have built.
+
+An important constraint is the project must use Diffusion Models to generate these structures,
+more on that later.
+
+---
+
+## Data
+
+After scraping the internet for usable data, I was left with a dataset of 13,000 usable structures.
+These are stored as 32x32x32 dense tensors full of ids representing the blocks inside them. Notably
+the data has something like 8,000 unique block ids, but this is way to complex for this purpose.
+Especially when many of those categories are exceedingly rare. We instead truncate that to 256 unique
+block ids. Which encodes 98.4% of voxels. Anything not on this list is marked as unknown.
+
+---
+
+## Diffusion Overview
+
+Diffusion Models are state-of-the-art Generative AI models that have been getting a lot of attention
+lately. They have been surprisingly powerful in many different domains. Whether its creating photo-realistic
+pictures of imaginary people, sample of songs from a prompt, or even never seen before levels of weather
+predictions. 
+
+---
+
+## Simple Diffusion
+
+$ Diffusion Diagram
+
+Diffusion works by taking data, adding noise, and trainging a neural net to remove noise from the data.
+Once the model has a strong idea of how to denoise data in a particular domain, generation is done by giving
+the model isotropic gaussian noise. This contains no meaningful signal of any piece of data in particular,
+so it generates something new.
+
+---
+
+## Let's Generate a House
+
+Well, the goal is to generate a house, we have data, and we have a method, lets combine them. Apply Simple Diffusion
+to the data in the Minecraft dataset and were done.
+
+*smash transition*
+
+---
+
+$ Pictures of Attempt 1
+
+---
+
+## Woops
+
+Well that didn't work. What went wrong?
+After deliberating with my professor, he gave me some insight into what may have gone wrong.
+The feature space is just very large for the neural net to learn. 32x32x32x200 is large and explodes quickly.
+The model needs to learn this space and characterize it to predict make decent predictions, without unreasonable
+compute and a million or more datapoints, this would be completely impossible.
+
+To solve this, we need some sort of dimension reduction. Specifically, one that is trainable.
+
+Enter Variational Auto Encoders.
+
+---
+
+## Variational Auto Encoders
+
+These models take input data and find a mapping to and from arbitrary probability distributions. 
+In this case, we map from a 32x32x32x256 space, to some 100-dimensional multivariate gaussian latent space.
+These mappings are obviously non-trivial. The complexity is handled by CNN's to encode and decode the latent space.
+
+Then we can take this 100-dimensional latent vector and run diffusion on it, map it back into data, and see an output.
+
+This is known as latent diffusion and has had great success in practice.
+
+---
+
+$ New outputs
+
+---
+
+## Architecture
+
+The final model used 2 U-Nets (a type of convolutional neural net) with 96 Hidden Dimensions each,
+as encoders and decoders from latent space.
+
+After encoding the latent vectors are noised until they are complete noise, then denoised using a third
+U-Net with 150 Hidden Dimensions.
+
+The final outputs are pretty good. They show clear understanding of 3D structure, an understanding of structural
+motifs, and a good idea of when to use what block in the outputs. These strucures are learned by CNNs, and show
+why CNNs are powerful. They are powerful models for learning geometric structure in data, and are chosen for just this.
+
+$ Diagrams
+
+---
+
+## Training Graphs
+
+The model ran for 500 Epochs in training and ended up with 100 Million parameters. It trained on Tempest,
+for a total compute time of 36 hours.
+
+$ training graphs over time, with train test seperate.
+
+---
+
+## Summary
+
+With a goal of generating stuctures in Minecraft, I built a somewhat complex generative AI model.
+- It starts with a dense tensor of Minecraft blocks
+- Using this data, it trains both an encoder and decoder to a lower dimensional space. A probablistic space.
+- Within this space, a Diffusion Model is trained to noise and denoise latent vectors.
+- Samples are obtained by sampling random points in latent space, running diffusion to denoise, and decode
+latent vectors back into house-like objects
+
+This project is an example of using latent diffusion in 3 dimensional data with some success. A strong proof of concept,
+and hopefully a meaningful demonstration of the potency of like models.
+
+
+

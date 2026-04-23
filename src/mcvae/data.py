@@ -21,16 +21,18 @@ class BuildRecord:
 
 
 def load_palette(palette_path: str | Path) -> list[str]:
-    path = Path(palette_path)
+    """Load a non-empty block palette from a JSON file."""
+    path: Path = Path(palette_path)
     with path.open("r", encoding="utf-8") as handle:
-        palette = json.load(handle)
+        palette: list[str] = json.load(handle)
     if not isinstance(palette, list) or not palette:
         raise ValueError(f"Palette at {path} must be a non-empty JSON list.")
     return palette
 
 
 def discover_npz_files(data_dir: str | Path, limit: int | None = None) -> list[Path]:
-    files = sorted(Path(data_dir).glob("*.npz"))
+    """Return sorted `.npz` files from `data_dir`, optionally capped by `limit`."""
+    files: list[Path] = sorted(Path(data_dir).glob("*.npz"))
     if not files:
         raise FileNotFoundError(f"No .npz files found in {data_dir}.")
     if limit is not None:
@@ -45,23 +47,28 @@ class MinecraftBuildDataset(Dataset[dict[str, torch.Tensor | str]]):
         palette_path: str | Path,
         limit: int | None = None,
     ) -> None:
-        self.data_dir = Path(data_dir)
-        self.paths = discover_npz_files(self.data_dir, limit=limit)
-        self.palette = load_palette(palette_path)
-        self.vocab_size = len(self.palette)
+        """Initialize the dataset index and palette metadata."""
+        self.data_dir: Path = Path(data_dir)
+        self.paths: list[Path] = discover_npz_files(self.data_dir, limit=limit)
+        self.palette: list[str] = load_palette(palette_path)
+        self.vocab_size: int = len(self.palette)
 
     def __len__(self) -> int:
+        """Return the number of indexed build files."""
         return len(self.paths)
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor | str]:
-        path = self.paths[index]
+        """Load one build and return tensors plus source metadata."""
+        path: Path = self.paths[index]
         with np.load(path, allow_pickle=False) as data:
-            blocks = np.asarray(data["blocks"], dtype=np.int64)
-            shape = tuple(int(v) for v in data["shape"].tolist())
-            original_shape = tuple(int(v) for v in data["original_shape"].tolist())
-            axis_order = str(data["axis_order"].item())
-            source_format = str(data["source_format"].item())
-            dataset_path = str(data["dataset_path"].item())
+            blocks: np.ndarray = np.asarray(data["blocks"], dtype=np.int64)
+            shape: tuple[int, int, int] = tuple(int(v) for v in data["shape"].tolist())
+            original_shape: tuple[int, int, int] = tuple(
+                int(v) for v in data["original_shape"].tolist()
+            )
+            axis_order: str = str(data["axis_order"].item())
+            source_format: str = str(data["source_format"].item())
+            dataset_path: str = str(data["dataset_path"].item())
 
         if blocks.shape != (32, 32, 32):
             raise ValueError(f"{path} has shape {blocks.shape}, expected (32, 32, 32).")
@@ -86,13 +93,14 @@ def split_dataset(
     val_ratio: float,
     seed: int,
 ) -> tuple[Dataset, Dataset]:
+    """Split a dataset into train/validation subsets with a fixed RNG seed."""
     if not 0.0 < val_ratio < 1.0:
         raise ValueError("val_ratio must be between 0 and 1.")
-    val_size = max(1, int(round(len(dataset) * val_ratio)))
-    train_size = len(dataset) - val_size
+    val_size: int = max(1, int(round(len(dataset) * val_ratio)))
+    train_size: int = len(dataset) - val_size
     if train_size <= 0:
         raise ValueError("Validation split is too large for this dataset.")
-    generator = torch.Generator().manual_seed(seed)
+    generator: torch.Generator = torch.Generator().manual_seed(seed)
     return random_split(dataset, [train_size, val_size], generator=generator)
 
 
@@ -100,11 +108,12 @@ def summarize_dataset(
     records: Iterable[dict[str, torch.Tensor | str]],
     palette: list[str],
 ) -> dict[str, object]:
-    total_samples = 0
-    total_non_air = 0
+    """Compute basic dataset summary metrics from loaded samples."""
+    total_samples: int = 0
+    total_non_air: int = 0
     for sample in records:
         total_samples += 1
-        blocks = sample["blocks"]
+        blocks: torch.Tensor | str = sample["blocks"]
         assert isinstance(blocks, torch.Tensor)
         total_non_air += int((blocks != 0).sum().item())
     return {
