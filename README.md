@@ -1,5 +1,7 @@
 # Minecraft Build VAE
 
+The dataset for this project can be found at https://www.kaggle.com/datasets/bsig128/minecraft-dataset-for-ml
+
 This project trains a 3D variational autoencoder on the voxel builds in `mc_builds/`.
 
 The dataset in this workspace already uses:
