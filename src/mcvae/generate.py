@@ -7,7 +7,7 @@ from typing import Any, Sequence
 import numpy as np
 import torch
 
-from mcvae.data import discover_npz_files, load_palette
+from mcvae.data import discover_npz_files, load_palette, load_block_mapping
 from mcvae.diffusion import LatentDiffusion, LatentDiffusionConfig
 from mcvae.io import ensure_dir, load_checkpoint, write_build_npz, write_structure_nbt
 from mcvae.model import VAEConfig, VoxelVAE
@@ -106,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     reconstruct.add_argument("--output-dir", type=Path, required=True)
     reconstruct.add_argument("--limit", type=int, default=None)
     reconstruct.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    reconstruct.add_argument("--palette-json", type=Path, default=None, help="Original palette for block mapping.")
+    reconstruct.add_argument("--block-mapping", type=Path, default=None, help="JSON file mapping specific blocks to generic blocks.")
     add_output_args(reconstruct)
 
     return parser
@@ -126,6 +128,7 @@ def load_model(checkpoint_path: Path, device: torch.device) -> tuple[VoxelVAE, d
             embedding_dim=config["embedding_dim"],
             latent_dim=config["latent_dim"],
             base_channels=config["base_channels"],
+            pos_embed_dim=config.get("pos_embed_dim", 0),
         )
     ).to(device)
     model.load_state_dict(checkpoint["model_state"])
@@ -410,11 +413,21 @@ def run_reconstruct(args: argparse.Namespace) -> None:
         load_palette(config["palette_json"]) if args.format in {"structure", "both"} else None
     )
 
+    lookup_array: np.ndarray | None = None
+    if getattr(args, "block_mapping", None):
+        original_palette_path = args.palette_json or config.get("original_palette_json")
+        if not original_palette_path:
+            raise ValueError("Must provide --palette-json when using --block-mapping for reconstruction.")
+        original_palette: list[str] = load_palette(original_palette_path)
+        _, lookup_array = load_block_mapping(args.block_mapping, original_palette)
+
     with torch.no_grad():
         for path in input_paths:
             build: dict[str, object] = load_build(path)
             blocks: object = build["blocks"]
             assert isinstance(blocks, np.ndarray)
+            if lookup_array is not None:
+                blocks = lookup_array[blocks]
             tensor: torch.Tensor = torch.from_numpy(blocks).long().unsqueeze(0).to(device)
             reconstructed: np.ndarray = (
                 model.reconstruct(tensor).squeeze(0).cpu().numpy().astype(np.int32)

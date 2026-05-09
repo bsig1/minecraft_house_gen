@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--palette-json", type=Path, required=True)
+    parser.add_argument("--block-mapping", type=Path, default=None, help="JSON file mapping specific blocks to generic blocks.")
     parser.add_argument("--vae-checkpoint", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=60)
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Train on sampled z from q(z|x) instead of deterministic mu.",
     )
+    parser.add_argument("--resume", type=Path, default=None, help="Path to diffusion checkpoint to resume from.")
     return parser
 
 
@@ -90,6 +92,7 @@ def load_vae(checkpoint_path: Path, device: torch.device) -> tuple[VoxelVAE, dic
             embedding_dim=config["embedding_dim"],
             latent_dim=config["latent_dim"],
             base_channels=config["base_channels"],
+            pos_embed_dim=config.get("pos_embed_dim", 0),
         )
     ).to(device)
     vae.load_state_dict(checkpoint["model_state"])
@@ -116,7 +119,8 @@ def run_epoch(
     totals: dict[str, float] = {"loss": 0.0}
     batches: int = 0
 
-    for batch in loader:
+    desc = "Training" if is_train else "Validating"
+    for batch in tqdm(loader, desc=desc, leave=False):
         blocks: torch.Tensor = batch["blocks"].to(device, non_blocking=True)
         if is_train:
             optimizer.zero_grad(set_to_none=True)
@@ -160,7 +164,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     checkpoints_dir: Path = ensure_dir(output_dir / "checkpoints")
 
     dataset: MinecraftBuildDataset = MinecraftBuildDataset(
-        args.data_dir, args.palette_json, limit=args.limit
+        args.data_dir, args.palette_json, limit=args.limit, block_mapping_path=args.block_mapping
     )
     train_dataset, val_dataset = split_dataset(dataset, val_ratio=args.val_ratio, seed=args.seed)
     train_loader: DataLoader = make_loader(
@@ -224,10 +228,20 @@ def main(argv: Sequence[str] | None = None) -> None:
     }
     save_json(output_dir / "config.json", config)
 
+    start_epoch: int = 1
     best_val_loss: float = float("inf")
+
+    if args.resume:
+        print(f"Resuming from checkpoint {args.resume}")
+        checkpoint: dict[str, Any] = load_checkpoint(args.resume, map_location=device)
+        diffusion.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        start_epoch = checkpoint["epoch"] + 1
+        best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+
     metrics_path: Path = output_dir / "metrics.jsonl"
 
-    for epoch in tqdm(range(1, args.epochs + 1), desc="Epochs"):
+    for epoch in tqdm(range(start_epoch, args.epochs + 1), desc="Epochs"):
         started: float = time.time()
         train_metrics: dict[str, float] = run_epoch(
             diffusion,
