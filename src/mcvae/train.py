@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from mcvae.data import MinecraftBuildDataset, split_dataset
-from mcvae.io import ensure_dir, save_checkpoint, save_json
+from mcvae.io import ensure_dir, load_checkpoint, save_checkpoint, save_json
 from mcvae.model import VAEConfig, VoxelVAE, build_loss
 
 
@@ -22,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train a VAE on Minecraft NPZ voxel builds.")
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--palette-json", type=Path, required=True)
+    parser.add_argument("--block-mapping", type=Path, default=None, help="JSON file mapping specific blocks to generic blocks.")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=2)
@@ -32,11 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embedding-dim", type=int, default=32)
     parser.add_argument("--latent-dim", type=int, default=256)
     parser.add_argument("--base-channels", type=int, default=32)
+    parser.add_argument("--pos-embed-dim", type=int, default=0, help="Channels for 3D sinusoidal positional encoding.")
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--resume", type=Path, default=None, help="Path to checkpoint to resume training from.")
     parser.add_argument("--amp", action="store_true", help="Enable mixed precision on CUDA.")
     return parser
 
@@ -88,7 +91,8 @@ def run_epoch(
     totals: dict[str, float] = {"loss": 0.0, "recon": 0.0, "kld": 0.0}
     batches: int = 0
 
-    for batch in loader:
+    desc = "Training" if is_train else "Validating"
+    for batch in tqdm(loader, desc=desc, leave=False):
         blocks: torch.Tensor = batch["blocks"].to(device, non_blocking=True)
 
         if is_train:
@@ -141,7 +145,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     checkpoints_dir: Path = ensure_dir(output_dir / "checkpoints")
 
     dataset: MinecraftBuildDataset = MinecraftBuildDataset(
-        args.data_dir, args.palette_json, limit=args.limit
+        args.data_dir, args.palette_json, limit=args.limit, block_mapping_path=args.block_mapping
     )
     train_dataset, val_dataset = split_dataset(dataset, val_ratio=args.val_ratio, seed=args.seed)
     train_loader: DataLoader = make_loader(
@@ -156,6 +160,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         embedding_dim=args.embedding_dim,
         latent_dim=args.latent_dim,
         base_channels=args.base_channels,
+        pos_embed_dim=args.pos_embed_dim,
     )
     device: torch.device = torch.device(args.device)
     model: VoxelVAE = VoxelVAE(model_config).to(device)
@@ -167,9 +172,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     use_amp: bool = bool(args.amp and device.type == "cuda")
     scaler: torch.amp.GradScaler | None = torch.amp.GradScaler("cuda") if use_amp else None
 
+    # Save the active palette (which may have been reduced) for generation
+    active_palette_path = output_dir / "active_palette.json"
+    save_json(active_palette_path, dataset.palette)
+
     config: dict[str, Any] = {
         "data_dir": str(args.data_dir.resolve()),
-        "palette_json": str(args.palette_json.resolve()),
+        "palette_json": str(active_palette_path.resolve()),
+        "original_palette_json": str(args.palette_json.resolve()),
         "output_dir": str(args.output_dir.resolve()),
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -180,6 +190,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "embedding_dim": args.embedding_dim,
         "latent_dim": args.latent_dim,
         "base_channels": args.base_channels,
+        "pos_embed_dim": args.pos_embed_dim,
         "val_ratio": args.val_ratio,
         "num_workers": args.num_workers,
         "limit": args.limit,
@@ -189,10 +200,25 @@ def main(argv: Sequence[str] | None = None) -> None:
     }
     save_json(output_dir / "config.json", config)
 
+    start_epoch: int = 1
     best_val_loss: float = float("inf")
+
+    if args.resume:
+        print(f"Resuming from checkpoint {args.resume}")
+        checkpoint: dict[str, Any] = load_checkpoint(args.resume, map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        start_epoch = checkpoint["epoch"] + 1
+        best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+        
+        # Override the restored optimizer state with the current CLI arguments
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = args.learning_rate
+            param_group["weight_decay"] = args.weight_decay
+
     metrics_path: Path = output_dir / "metrics.jsonl"
 
-    for epoch in tqdm(range(1, args.epochs + 1),desc="Epochs"):
+    for epoch in tqdm(range(start_epoch, args.epochs + 1), desc="Epochs"):
         started: float = time.time()
         train_metrics: dict[str, float] = run_epoch(
             model,

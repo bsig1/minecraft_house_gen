@@ -30,6 +30,34 @@ def load_palette(palette_path: str | Path) -> list[str]:
     return palette
 
 
+def load_block_mapping(mapping_path: str | Path, original_palette: list[str]) -> tuple[list[str], np.ndarray]:
+    """Load a block reduction map and create a new palette and numpy lookup array."""
+    with Path(mapping_path).open("r", encoding="utf-8") as handle:
+        mapping: dict[str, str] = json.load(handle)
+
+    # Create new palette with mapped names
+    new_palette_set = set()
+    for block in original_palette:
+        new_palette_set.add(mapping.get(block, block))
+
+    new_palette = sorted(list(new_palette_set))
+
+    # Ensure air remains at index 0
+    air_block = original_palette[0] if original_palette else "minecraft:air"
+    if air_block in new_palette:
+        new_palette.remove(air_block)
+        new_palette.insert(0, air_block)
+
+    new_palette_index = {name: i for i, name in enumerate(new_palette)}
+
+    # Build index-to-index lookup array
+    lookup = np.zeros(len(original_palette), dtype=np.int64)
+    for old_idx, old_name in enumerate(original_palette):
+        lookup[old_idx] = new_palette_index[mapping.get(old_name, old_name)]
+
+    return new_palette, lookup
+
+
 def discover_npz_files(data_dir: str | Path, limit: int | None = None) -> list[Path]:
     """Return sorted `.npz` files from `data_dir`, optionally capped by `limit`."""
     files: list[Path] = sorted(Path(data_dir).glob("*.npz"))
@@ -46,12 +74,19 @@ class MinecraftBuildDataset(Dataset[dict[str, torch.Tensor | str]]):
         data_dir: str | Path,
         palette_path: str | Path,
         limit: int | None = None,
+        block_mapping_path: str | Path | None = None,
     ) -> None:
         """Initialize the dataset index and palette metadata."""
         self.data_dir: Path = Path(data_dir)
         self.paths: list[Path] = discover_npz_files(self.data_dir, limit=limit)
         self.palette: list[str] = load_palette(palette_path)
-        self.vocab_size: int = len(self.palette)
+        self.original_vocab_size: int = len(self.palette)
+        self.lookup_array: np.ndarray | None = None
+
+        if block_mapping_path is not None:
+            self.palette, self.lookup_array = load_block_mapping(block_mapping_path, self.palette)
+
+        self.vocab_size = len(self.palette)
 
     def __len__(self) -> int:
         """Return the number of indexed build files."""
@@ -72,10 +107,13 @@ class MinecraftBuildDataset(Dataset[dict[str, torch.Tensor | str]]):
 
         if blocks.shape != (32, 32, 32):
             raise ValueError(f"{path} has shape {blocks.shape}, expected (32, 32, 32).")
-        if blocks.min() < 0 or blocks.max() >= self.vocab_size:
+        if blocks.min() < 0 or blocks.max() >= self.original_vocab_size:
             raise ValueError(
-                f"{path} contains block IDs outside palette range 0..{self.vocab_size - 1}."
+                f"{path} contains block IDs outside original palette range 0..{self.original_vocab_size - 1}."
             )
+
+        if self.lookup_array is not None:
+            blocks = self.lookup_array[blocks]
 
         return {
             "blocks": torch.from_numpy(blocks).long(),
